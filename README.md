@@ -1,6 +1,6 @@
 # Hexapod Robot Simulator
 
-A comprehensive 3D simulation of a hexapod (6-legged) robot with advanced kinematics, real-time animation, and interactive controls. This simulator demonstrates inverse kinematics, gait patterns, body articulation, and realistic movement constraints.
+A comprehensive 3D simulation of a hexapod (6-legged) robot with advanced kinematics, real-time animation, and interactive controls. This simulator demonstrates inverse kinematics, gait patterns, body articulation, idle positioning, and realistic movement constraints.
 
 ![Python](https://img.shields.io/badge/python-v3.8+-blue.svg)
 ![Matplotlib](https://img.shields.io/badge/matplotlib-latest-green.svg)
@@ -17,6 +17,7 @@ A comprehensive 3D simulation of a hexapod (6-legged) robot with advanced kinema
 - [Kinematics](#kinematics)
 - [Movement System](#movement-system)
 - [Body Pose Control](#body-pose-control)
+- [Idle Position System](#idle-position-system)
 - [Safety Features](#safety-features)
 - [Code Structure](#code-structure)
 - [Troubleshooting](#troubleshooting)
@@ -38,6 +39,7 @@ A comprehensive 3D simulation of a hexapod (6-legged) robot with advanced kinema
 - **Turning**: Rotation around vertical axis
 - **Body Articulation**: Independent pitch and yaw control
 - **Height Adjustment**: Variable body height with safety constraints
+- **Idle Position**: Predefined neutral stance for stable resting position
 
 ### Advanced Features
 - **Dynamic Trajectory Calculation**: Foot paths calculated from current positions
@@ -94,6 +96,12 @@ python hexaPodSim.py
 | `Q` | Turn Left | Rotate robot counterclockwise |
 | `E` | Turn Right | Rotate robot clockwise |
 
+### Stance Controls
+
+| Key | Action | Description |
+|-----|--------|-------------|
+| `Z` | Idle Position | Move legs to neutral/idle stance (maintains body height) |
+
 ### Body Pose Controls
 
 | Key | Action | Description |
@@ -128,6 +136,8 @@ python hexaPodSim.py
 **Look Around While Moving**: Press `W` + `J` to walk forward while looking left
 
 **Complex Movement**: Press `W` + `D` + `E` + `L` to walk forward-right while turning right and looking right
+
+**Return to Rest**: Press `Z` to move all legs to a stable idle position while maintaining current body height and orientation
 
 ## Technical Overview
 
@@ -310,6 +320,54 @@ To maintain foot contact during body rotation:
 - **Yaw Range**: ±45° (reasonable head movement)
 - **Roll**: Currently disabled (could be added via `R` key)
 
+## Idle Position System
+
+### Overview
+The idle position functionality provides a predefined neutral stance that places all legs in a stable, comfortable configuration. This feature is useful for:
+- **Initialization**: Setting a known starting position
+- **Rest State**: Providing a stable stance between movements  
+- **Calibration**: Establishing a reference configuration
+- **Recovery**: Returning to a safe position after complex movements
+
+### Implementation
+```python
+# Predefined idle angles for each leg (degrees)
+idle_angles_deg = [75, 75, 90, 90, 105, 105]  # Leg 0-5
+
+# Calculate idle position for each leg
+neutral_radius = coxa_length + femur_length * 0.8
+sign = -1 if i % 2 == 0 else 1  # Right legs negative, left positive
+angle = sign * idle_angles_rad[i]
+
+# Position in world coordinates
+idle_x = leg_base[0] + neutral_radius * cos(angle)
+idle_y = leg_base[1] + neutral_radius * sin(angle)
+idle_z = 0  # Maintain ground contact
+```
+
+### Key Features
+- **Height Preservation**: Body height remains unchanged during idle positioning
+- **Body Orientation**: Current pitch/yaw angles are maintained
+- **Symmetric Stance**: Creates a stable, symmetric leg configuration
+- **Ground Contact**: All feet remain in contact with the ground plane
+- **Smooth Transition**: Uses standard inverse kinematics for natural movement
+
+### Idle Leg Configuration
+```
+    0(75°) ---- 2(90°) ---- 4(105°)    (Right side)
+        \         |         /
+         \        |        /
+          \    BODY      /
+         /        |        \
+        /         |         \
+    1(75°) ---- 3(90°) ---- 5(105°)    (Left side)
+```
+
+The idle angles create a stable tripod-like stance with:
+- **Front legs (0,1)**: 75° - Slightly forward and outward
+- **Middle legs (2,3)**: 90° - Directly outward for maximum stability  
+- **Rear legs (4,5)**: 105° - Slightly rearward and outward
+
 ## Safety Features
 
 ### Height Limitations
@@ -402,6 +460,7 @@ move_left = [False]
 move_right = [False]
 turn_left = [False]
 turn_right = [False]
+move_to_idle = [False]  # Idle position control
 
 # Body pose control
 body_pitch = [0.0]  # Forward/backward tilt

@@ -12,6 +12,7 @@ Controls:
 - D: Crab walk right
 - Q: Turn left
 - E: Turn right
+- Z: Move to idle position
 - C: Sweep coxa joints
 - G: Sweep femur joints
 - T: Sweep tibia joints
@@ -120,6 +121,7 @@ turn_right = [False]
 sweep_coxa = [False]
 sweep_femur = [False]
 sweep_tibia = [False]
+move_to_idle = [False]
 height_limit_warned = [False]
 
 # Camera/view control variables
@@ -145,6 +147,8 @@ def on_key_press(event):
         sweep_femur[0] = True
     if event.key == 't':
         sweep_tibia[0] = True
+    if event.key == 'z':
+        move_to_idle[0] = True
     if event.key == 'h':
         # Calculate maximum safe height based on actual leg geometry
         # In neutral stance, legs reach horizontally: coxa + 0.8*femur
@@ -201,6 +205,8 @@ def on_key_release(event):
         sweep_femur[0] = False
     if event.key == 't':
         sweep_tibia[0] = False
+    if event.key == 'z':
+        move_to_idle[0] = False
 
 # ---------------- Visualization Setup ----------------
 robot = HexapodRobot()
@@ -603,6 +609,32 @@ def animate(frame, ax=ax, robot=robot, leg_lines=leg_lines):
             )
             femur_angle = 0
             tibia_angle = sweep_rad
+        elif move_to_idle[0]:
+            # Move legs to idle position - neutral stance with predefined angles
+            # Calculate idle foot position based on current body height
+            neutral_radius = robot.coxa_length + robot.femur_length * 0.8
+            idle_angles_deg = [75, 75, 90, 90, 105, 105]  # Predefined idle angles for each leg
+            idle_angles_rad = [np.deg2rad(a) for a in idle_angles_deg]
+            sign = -1 if i % 2 == 0 else 1  # Right legs negative, left legs positive
+            angle = sign * idle_angles_rad[i]
+            
+            # Calculate idle position in world coordinates (before body rotation)
+            idle_x = robot.leg_bases[i][0] + neutral_radius * np.cos(angle)
+            idle_y = robot.leg_bases[i][1] + neutral_radius * np.sin(angle)
+            idle_z = 0  # Keep feet on ground
+            
+            # Store target position for inverse kinematics
+            target_foot_positions[i] = (idle_x, idle_y, idle_z)
+            
+            # Use inverse kinematics to reach idle position
+            coxa_angle, femur_angle, tibia_angle = leg_inverse_kinematics(
+                leg_bases[i],
+                target_foot_positions[i],
+                robot.coxa_length,
+                robot.femur_length,
+                robot.tibia_length,
+                robot.leg_angles[i]
+            )
         elif any_movement:
             # Calculate proper trajectory positions for movement
             phase = robot.tripod_phase[i]
