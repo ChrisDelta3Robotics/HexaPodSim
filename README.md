@@ -1,6 +1,6 @@
 # Hexapod Robot Simulator
 
-A comprehensive 3D simulation of a hexapod (6-legged) robot with advanced kinematics, real-time animation, and interactive controls. This simulator demonstrates inverse kinematics, gait patterns, body articulation, idle positioning, and realistic movement constraints.
+A comprehensive 3D simulation of a hexapod (6-legged) robot with advanced kinematics, PID servo control, real-time animation, and interactive controls. This simulator demonstrates inverse kinematics, realistic servo dynamics, gait patterns, body articulation, idle positioning, and movement constraints with fast, responsive PID controllers.
 
 ![Python](https://img.shields.io/badge/python-v3.8+-blue.svg)
 ![Matplotlib](https://img.shields.io/badge/matplotlib-latest-green.svg)
@@ -18,6 +18,7 @@ A comprehensive 3D simulation of a hexapod (6-legged) robot with advanced kinema
 - [Movement System](#movement-system)
 - [Body Pose Control](#body-pose-control)
 - [Idle Position System](#idle-position-system)
+- [PID Servo Control System](#pid-servo-control-system)
 - [Safety Features](#safety-features)
 - [Code Structure](#code-structure)
 - [Troubleshooting](#troubleshooting)
@@ -27,8 +28,10 @@ A comprehensive 3D simulation of a hexapod (6-legged) robot with advanced kinema
 
 ### Core Functionality
 - **Real-time 3D Animation**: Smooth 60fps visualization with matplotlib
+- **PID Servo Control**: 18 individual PID controllers (3 per leg) for realistic servo dynamics
 - **6-DOF Inverse Kinematics**: Each leg has 3 joints (coxa, femur, tibia)
-- **Tripod Gait Pattern**: Biologically-inspired alternating leg movement
+- **Fast Response System**: High-speed servo movement (8 rad/s) with aggressive PID tuning
+- **Tripod Gait Pattern**: Biologically-inspired alternating leg movement with faster cycle times
 - **Interactive Controls**: Real-time keyboard input for all movements
 - **Visual Feedback**: Purple trajectory lines show planned foot paths
 
@@ -42,6 +45,10 @@ A comprehensive 3D simulation of a hexapod (6-legged) robot with advanced kinema
 - **Idle Position**: Predefined neutral stance for stable resting position
 
 ### Advanced Features
+- **PID Servo Dynamics**: Realistic servo behavior with proportional-integral-derivative control
+- **Fast Response Tuning**: Aggressive PID gains for snappy, responsive movement
+- **Speed Limitations**: Configurable maximum servo speeds (currently 8 rad/s)
+- **Joint-Specific Tuning**: Different PID parameters for coxa, femur, and tibia servos
 - **Dynamic Trajectory Calculation**: Foot paths calculated from current positions
 - **Ground Contact Maintenance**: Prevents feet from losing contact during rotation
 - **Height Safety Limits**: Automatic prevention of impossible leg configurations
@@ -368,6 +375,73 @@ The idle angles create a stable tripod-like stance with:
 - **Middle legs (2,3)**: 90° - Directly outward for maximum stability  
 - **Rear legs (4,5)**: 105° - Slightly rearward and outward
 
+## PID Servo Control System
+
+### Overview
+The hexapod simulator uses realistic PID (Proportional-Integral-Derivative) controllers to simulate actual servo motor behavior. Instead of instant position changes, each of the 18 servos (3 per leg × 6 legs) gradually moves toward target positions with realistic dynamics.
+
+### PID Controller Features
+- **Individual Control**: Each servo has its own PID controller with independent tuning
+- **Fast Response**: Aggressive tuning for snappy, responsive movement
+- **Speed Limits**: Realistic maximum servo speeds (8 radians/second)
+- **Anti-Windup**: Integral term limiting prevents controller instability
+- **Smooth Motion**: Natural acceleration and deceleration curves
+
+### Servo Configuration
+
+| Joint Type | Proportional (kp) | Integral (ki) | Derivative (kd) | Max Speed | Characteristics |
+|------------|-------------------|---------------|-----------------|-----------|-----------------|
+| **Coxa** | 5.0 | 0.5 | 0.2 | 8 rad/s | Fast hip rotation |
+| **Femur** | 4.0 | 0.4 | 0.15 | 8 rad/s | Responsive upper leg |
+| **Tibia** | 4.5 | 0.45 | 0.18 | 8 rad/s | Precise foot positioning |
+
+### PID Implementation
+```python
+class PIDController:
+    def update(self, dt):
+        error = target_position - current_position
+        
+        # Proportional term
+        proportional = self.kp * error
+        
+        # Integral term (with anti-windup)
+        self.integral += error * dt
+        self.integral = np.clip(self.integral, -1.0, 1.0)
+        integral_term = self.ki * self.integral
+        
+        # Derivative term
+        derivative = (error - self.previous_error) / dt
+        derivative_term = self.kd * derivative
+        
+        # Calculate output with speed limiting
+        output = proportional + integral_term + derivative_term
+        max_change = max_speed * dt
+        position_change = np.clip(output * dt, -max_change, max_change)
+        
+        self.current_position += position_change
+        return self.current_position
+```
+
+### Performance Characteristics
+- **Fast Gait Cycle**: 4 frames per step (reduced from 7) for quicker walking
+- **Responsive Controls**: Minimal delay between input and movement
+- **Realistic Dynamics**: Overshooting, settling, and natural servo behavior
+- **Stable Operation**: Tuned for fast response without oscillation
+
+### Benefits of PID Control
+1. **Realistic Movement**: Servos behave like actual hardware
+2. **Smooth Transitions**: No instant "teleportation" to positions
+3. **Natural Dynamics**: Acceleration, deceleration, and settling behavior
+4. **Expandable Framework**: Ready for load simulation, backlash modeling
+5. **Hardware Similarity**: Easy transition to real robot control
+
+### Tuning Guidelines
+- **Increase kp**: Faster response, but may cause overshoot
+- **Increase ki**: Better steady-state accuracy, but may cause oscillation
+- **Increase kd**: Reduced overshoot, smoother approach to target
+- **Increase max_speed**: Faster movement, but may reduce stability
+- **Reduce step_period**: Faster gait cycle for quicker walking
+
 ## Safety Features
 
 ### Height Limitations
@@ -432,7 +506,22 @@ hexaPodSim.py
 **`HexapodRobot.__init__()`**
 - Defines robot geometry and dimensions
 - Calculates leg base positions
-- Sets up initial joint angles
+- Initializes 18 PID controllers with aggressive tuning
+- Sets up initial joint angles and servo positions
+
+**`PIDController.update(dt)`**
+- Updates individual servo position using PID control
+- Applies speed limits and anti-windup protection
+- Returns smooth, realistic servo movement
+
+**`robot.set_servo_targets(leg_index, coxa_target, femur_target, tibia_target)`**
+- Sets target positions for all servos in a leg
+- PID controllers work toward these targets gradually
+
+**`robot.update_servos()`**
+- Updates all 18 PID controllers simultaneously
+- Returns current servo positions for visualization
+- Applies realistic servo dynamics and speed limits
 
 **`leg_inverse_kinematics(target_pos, base_pos, coxa_length, femur_length, tibia_length)`**
 - Converts 3D target position to joint angles
@@ -441,9 +530,10 @@ hexaPodSim.py
 
 **`animate(frame)`**
 - Main animation loop called 60 times per second
-- Processes movement inputs and updates robot state
-- Calculates new foot positions and joint angles
-- Updates 3D visualization
+- Calculates target positions using inverse kinematics
+- Updates PID controllers with new targets
+- Renders legs using actual servo positions (not targets)
+- Updates 3D visualization with realistic servo dynamics
 
 **`on_key_press(event)` / `on_key_release(event)`**
 - Handle keyboard input for real-time control
@@ -471,6 +561,12 @@ body_roll = [0.0]   # Side-to-side tilt
 body_z = [0.15]     # Current body height
 current_foot_positions = [None] * 6
 target_foot_positions = [None] * 6
+
+# PID servo control (18 controllers total)
+robot.servo_controllers = [
+    [coxa_pid, femur_pid, tibia_pid]  # 3 controllers per leg
+    for leg in range(6)  # 6 legs
+]
 ```
 
 ## Troubleshooting
@@ -525,13 +621,23 @@ Solution: Check event handler setup
 # Use vectorized NumPy operations
 # Minimize matplotlib artist creation/deletion
 # Cache rotation matrices when possible
+# Optimize PID update frequency if needed
+```
+
+**For Faster Response:**
+```python
+# Increase PID gains (kp, ki, kd) for snappier movement
+# Increase max_speed in PID controllers (currently 8 rad/s)
+# Decrease step_period for faster gait cycle (currently 4)
+# Reduce integral windup limits for faster correction
 ```
 
 **For Smoother Animation:**
 ```python
-# Increase step_period for slower, smoother movements
-# Use higher-order interpolation for trajectories
-# Implement acceleration/deceleration curves
+# Decrease PID gains for gentler movement
+# Reduce max_speed for slower servo movement
+# Increase step_period for slower, smoother gaits
+# Add trajectory smoothing between waypoints
 ```
 
 ### Debugging Tools
@@ -573,11 +679,16 @@ ax.text(coxa_end[0], coxa_end[1], coxa_end[2],
 **Potential Improvements:**
 - Add roll control for complete 6-DOF body pose
 - Implement dynamic gait patterns (trot, bound, gallop)
-- Add obstacle detection and avoidance
-- Include joint torque/force calculations  
-- Add save/load functionality for robot configurations
-- Implement path planning and autonomous navigation
-- Add physics simulation (gravity, inertia, friction)
+- Add adaptive PID tuning based on load conditions
+- Include servo backlash and deadband modeling
+- Add joint torque/force calculations with PID load compensation
+- Implement servo failure simulation and recovery
+- Add real-time PID parameter adjustment interface
+- Include servo temperature and current monitoring simulation
+- Add save/load functionality for PID tuning profiles
+- Implement path planning with PID trajectory optimization
+- Add physics simulation (gravity, inertia, friction) affecting PID performance
+- Create hardware interface for real servo control
 
 **Bug Reports:**
 Please include:
@@ -591,11 +702,14 @@ Please include:
 Before submitting changes, verify:
 - [ ] All movement controls work individually
 - [ ] Combined movements work correctly
+- [ ] PID controllers respond appropriately to commands
+- [ ] Servo movement is smooth without oscillation
 - [ ] Body pose controls don't break leg kinematics
 - [ ] Height limits prevent impossible configurations
-- [ ] Trajectory visualization matches actual movement
+- [ ] Trajectory visualization matches actual servo movement
+- [ ] PID gains provide stable, responsive control
 - [ ] No runtime errors or warnings
-- [ ] Smooth 60 FPS animation performance
+- [ ] Smooth 60 FPS animation performance with PID updates
 
 ---
 

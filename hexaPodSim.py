@@ -2,9 +2,94 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+import time
+
+# ---------------- PID Controller Class ----------------
+class PIDController:
+    def __init__(self, kp=1.0, ki=0.1, kd=0.05, max_output=np.pi, min_output=-np.pi):
+        """
+        PID Controller for servo position control
+        
+        Args:
+            kp: Proportional gain
+            ki: Integral gain  
+            kd: Derivative gain
+            max_output: Maximum output limit (radians)
+            min_output: Minimum output limit (radians)
+        """
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.max_output = max_output
+        self.min_output = min_output
+        
+        # PID state variables
+        self.previous_error = 0.0
+        self.integral = 0.0
+        self.last_time = time.time()
+        
+        # Current position and target
+        self.current_position = 0.0
+        self.target_position = 0.0
+        
+    def set_target(self, target):
+        """Set the target position for the servo"""
+        self.target_position = np.clip(target, self.min_output, self.max_output)
+    
+    def update(self, dt):
+        """
+        Update PID controller and return new servo position
+        
+        Args:
+            dt: Time delta since last update
+            
+        Returns:
+            New servo position (radians)
+        """
+        # Calculate error
+        error = self.target_position - self.current_position
+        
+        # Proportional term
+        proportional = self.kp * error
+        
+        # Integral term
+        self.integral += error * dt
+        # Prevent integral windup
+        self.integral = np.clip(self.integral, -1.0, 1.0)
+        integral_term = self.ki * self.integral
+        
+        # Derivative term
+        if dt > 0:
+            derivative = (error - self.previous_error) / dt
+        else:
+            derivative = 0.0
+        derivative_term = self.kd * derivative
+        
+        # Calculate output
+        output = proportional + integral_term + derivative_term
+        
+        # Apply output limits and update current position
+        # Simulate servo movement with faster speed limits
+        max_speed = 8.0  # radians per second (increased for faster response)
+        max_change = max_speed * dt
+        
+        position_change = np.clip(output * dt, -max_change, max_change)
+        self.current_position += position_change
+        self.current_position = np.clip(self.current_position, self.min_output, self.max_output)
+        
+        # Update for next iteration
+        self.previous_error = error
+        
+        return self.current_position
+    
+    def reset(self):
+        """Reset PID controller state"""
+        self.previous_error = 0.0
+        self.integral = 0.0
+        self.last_time = time.time()
 
 """
-Hexapod Robot Simulator
+Hexapod Robot Simulator with PID Servo Control
 Controls:
 - W: Walk forward
 - S: Walk backward  
@@ -18,6 +103,13 @@ Controls:
 - T: Sweep tibia joints
 - H: Raise body
 - B: Lower body
+
+Features:
+- Fast PID-controlled servos for responsive movement
+- 18 individual servo controllers (3 per leg)
+- High-speed position transitions (8 rad/s max speed)
+- Aggressive PID gains for rapid response
+- Faster gait cycle (4 frames vs 7)
 """
 
 # ---------------- Hexapod Robot Definition ----------------
@@ -33,7 +125,28 @@ class HexapodRobot:
         self.femur_length = 0.7
         self.tibia_length = 1.0
 
-        self.step_period = 7
+        self.step_period = 4  # Faster gait cycle (reduced from 7)
+        
+        # Initialize PID controllers for each servo (3 servos per leg, 6 legs)
+        self.servo_controllers = []
+        for leg in range(self.num_legs):
+            leg_controllers = []
+            # Coxa servo (hip rotation) - fast and responsive
+            coxa_pid = PIDController(kp=5.0, ki=0.5, kd=0.2, max_output=np.pi, min_output=-np.pi)
+            leg_controllers.append(coxa_pid)
+            
+            # Femur servo (upper leg) - fast responsiveness  
+            femur_pid = PIDController(kp=4.0, ki=0.4, kd=0.15, max_output=np.pi, min_output=-np.pi/2)
+            leg_controllers.append(femur_pid)
+            
+            # Tibia servo (lower leg) - fast fine control
+            tibia_pid = PIDController(kp=4.5, ki=0.45, kd=0.18, max_output=0, min_output=-np.pi)
+            leg_controllers.append(tibia_pid)
+            
+            self.servo_controllers.append(leg_controllers)
+        
+        # Servo update timing
+        self.last_update_time = time.time()
 
         x_offsets = np.linspace(-self.body_length/2 + 0.2, self.body_length/2 - 0.2, self.num_legs_per_side)
         y_offset_outer = self.body_width / 2
@@ -60,6 +173,49 @@ class HexapodRobot:
 
         # Tripod gait: [0, 3, 4] and [1, 2, 5] alternate
         self.tripod_phase = [0, np.pi, np.pi, 0, 0, np.pi]
+
+    def set_servo_targets(self, leg_index, coxa_target, femur_target, tibia_target):
+        """Set target positions for all servos in a leg"""
+        if 0 <= leg_index < self.num_legs:
+            self.servo_controllers[leg_index][0].set_target(coxa_target)   # Coxa
+            self.servo_controllers[leg_index][1].set_target(femur_target)  # Femur  
+            self.servo_controllers[leg_index][2].set_target(tibia_target)  # Tibia
+    
+    def update_servos(self):
+        """Update all servo positions using PID control"""
+        current_time = time.time()
+        dt = current_time - self.last_update_time
+        self.last_update_time = current_time
+        
+        # Limit dt to prevent instability
+        dt = min(dt, 0.1)
+        
+        servo_positions = []
+        for leg in range(self.num_legs):
+            leg_positions = []
+            for servo in range(3):  # coxa, femur, tibia
+                position = self.servo_controllers[leg][servo].update(dt)
+                leg_positions.append(position)
+            servo_positions.append(leg_positions)
+        
+        return servo_positions
+    
+    def get_current_servo_positions(self):
+        """Get current positions of all servos"""
+        positions = []
+        for leg in range(self.num_legs):
+            leg_positions = []
+            for servo in range(3):
+                pos = self.servo_controllers[leg][servo].current_position
+                leg_positions.append(pos)
+            positions.append(leg_positions)
+        return positions
+    
+    def reset_servos(self):
+        """Reset all PID controllers"""
+        for leg in range(self.num_legs):
+            for servo in range(3):
+                self.servo_controllers[leg][servo].reset()
 
     def leg_forward_kinematics(self, base, coxa_angle, femur_angle, tibia_angle):
         coxa_end = (
@@ -210,6 +366,38 @@ def on_key_release(event):
 
 # ---------------- Visualization Setup ----------------
 robot = HexapodRobot()
+
+# Initialize PID controllers to neutral positions
+for leg_idx in range(robot.num_legs):
+    # Calculate initial neutral foot position
+    neutral_radius = robot.coxa_length + robot.femur_length * 0.8
+    idle_angles_deg = [75, 75, 90, 90, 105, 105]
+    idle_angles_rad = [np.deg2rad(a) for a in idle_angles_deg]
+    sign = -1 if leg_idx % 2 == 0 else 1
+    angle = sign * idle_angles_rad[leg_idx]
+    
+    neutral_x = robot.leg_bases[leg_idx][0] + neutral_radius * np.cos(angle)
+    neutral_y = robot.leg_bases[leg_idx][1] + neutral_radius * np.sin(angle)
+    neutral_z = 0
+    
+    # Calculate initial joint angles
+    initial_coxa, initial_femur, initial_tibia = leg_inverse_kinematics(
+        robot.leg_bases[leg_idx],
+        (neutral_x, neutral_y, neutral_z),
+        robot.coxa_length,
+        robot.femur_length,
+        robot.tibia_length,
+        robot.leg_angles[leg_idx]
+    )
+    
+    # Set initial positions for PID controllers
+    robot.servo_controllers[leg_idx][0].current_position = initial_coxa
+    robot.servo_controllers[leg_idx][0].target_position = initial_coxa
+    robot.servo_controllers[leg_idx][1].current_position = initial_femur  
+    robot.servo_controllers[leg_idx][1].target_position = initial_femur
+    robot.servo_controllers[leg_idx][2].current_position = initial_tibia
+    robot.servo_controllers[leg_idx][2].target_position = initial_tibia
+
 body_z = [robot.body_height / 2]  # Start with body at half its thickness above ground
 num_legs = robot.num_legs
 
@@ -571,22 +759,28 @@ def animate(frame, ax=ax, robot=robot, leg_lines=leg_lines):
     # Check if any movement is active for main animation
     any_movement = move_forward[0] or move_backward[0] or move_left[0] or move_right[0] or turn_left[0] or turn_right[0]
 
+    # Calculate target servo positions for all legs first
     for i in range(num_legs):
         base_x, base_y, base_z = leg_bases[i]
         foot_x = base_x
         foot_y = base_y
         foot_z = 0
 
+        # Calculate desired joint angles based on current mode
+        target_coxa_angle = 0
+        target_femur_angle = 0  
+        target_tibia_angle = 0
+
         if sweep_coxa[0]:
             sweep_deg = 90 * np.sin(2 * np.pi * (frame % robot.step_period) / robot.step_period)
             sweep_rad = np.deg2rad(sweep_deg)
-            coxa_angle = robot.leg_angles[i] + sweep_rad
-            femur_angle = 0
-            tibia_angle = 0
+            target_coxa_angle = robot.leg_angles[i] + sweep_rad
+            target_femur_angle = 0
+            target_tibia_angle = 0
         elif sweep_femur[0]:
             sweep_deg = 90 * np.sin(2 * np.pi * (frame % robot.step_period) / robot.step_period)
             sweep_rad = np.deg2rad(sweep_deg)
-            coxa_angle, femur_angle, tibia_angle = leg_inverse_kinematics(
+            target_coxa_angle, target_femur_angle, target_tibia_angle = leg_inverse_kinematics(
                 leg_bases[i],
                 (foot_x, foot_y, foot_z),
                 robot.coxa_length,
@@ -594,12 +788,12 @@ def animate(frame, ax=ax, robot=robot, leg_lines=leg_lines):
                 robot.tibia_length,
                 robot.leg_angles[i]
             )
-            femur_angle = sweep_rad
-            tibia_angle = 0
+            target_femur_angle = sweep_rad
+            target_tibia_angle = 0
         elif sweep_tibia[0]:
             sweep_deg = 90 * np.sin(2 * np.pi * (frame % robot.step_period) / robot.step_period)
             sweep_rad = np.deg2rad(sweep_deg)
-            coxa_angle, femur_angle, tibia_angle = leg_inverse_kinematics(
+            target_coxa_angle, target_femur_angle, target_tibia_angle = leg_inverse_kinematics(
                 leg_bases[i],
                 (foot_x, foot_y, foot_z),
                 robot.coxa_length,
@@ -607,8 +801,8 @@ def animate(frame, ax=ax, robot=robot, leg_lines=leg_lines):
                 robot.tibia_length,
                 robot.leg_angles[i]
             )
-            femur_angle = 0
-            tibia_angle = sweep_rad
+            target_femur_angle = 0
+            target_tibia_angle = sweep_rad
         elif move_to_idle[0]:
             # Move legs to idle position - neutral stance with predefined angles
             # Calculate idle foot position based on current body height
@@ -627,7 +821,7 @@ def animate(frame, ax=ax, robot=robot, leg_lines=leg_lines):
             target_foot_positions[i] = (idle_x, idle_y, idle_z)
             
             # Use inverse kinematics to reach idle position
-            coxa_angle, femur_angle, tibia_angle = leg_inverse_kinematics(
+            target_coxa_angle, target_femur_angle, target_tibia_angle = leg_inverse_kinematics(
                 leg_bases[i],
                 target_foot_positions[i],
                 robot.coxa_length,
@@ -702,7 +896,7 @@ def animate(frame, ax=ax, robot=robot, leg_lines=leg_lines):
             else:
                 foot_z = 0
                 
-            coxa_angle, femur_angle, tibia_angle = leg_inverse_kinematics(
+            target_coxa_angle, target_femur_angle, target_tibia_angle = leg_inverse_kinematics(
                 leg_bases[i],
                 (foot_x, foot_y, foot_z),
                 robot.coxa_length,
@@ -718,7 +912,7 @@ def animate(frame, ax=ax, robot=robot, leg_lines=leg_lines):
             # Use stored target foot positions (maintains ground contact during body rotation)
             foot_x, foot_y, foot_z = target_foot_positions[i]
 
-            coxa_angle, femur_angle, tibia_angle = leg_inverse_kinematics(
+            target_coxa_angle, target_femur_angle, target_tibia_angle = leg_inverse_kinematics(
                 leg_bases[i],
                 (foot_x, foot_y, foot_z),
                 robot.coxa_length,
@@ -726,6 +920,18 @@ def animate(frame, ax=ax, robot=robot, leg_lines=leg_lines):
                 robot.tibia_length,
                 robot.leg_angles[i]
             )
+
+        # Set target positions for PID controllers
+        robot.set_servo_targets(i, target_coxa_angle, target_femur_angle, target_tibia_angle)
+
+    # Update all servos using PID control
+    servo_positions = robot.update_servos()
+    
+    # Render each leg using PID-controlled positions
+    for i in range(num_legs):
+        coxa_angle = servo_positions[i][0]
+        femur_angle = servo_positions[i][1] 
+        tibia_angle = servo_positions[i][2]
 
         coxa_deg = np.rad2deg(coxa_angle)
         femur_deg = np.rad2deg(femur_angle)
