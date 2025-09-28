@@ -3,6 +3,19 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import time
+import argparse
+import sys
+
+# ---------------- Command Line Arguments ----------------
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Hexapod Robot Simulator with PID Control')
+    parser.add_argument('-limit', '--show-limits', action='store_true', 
+                       help='Show dotted reference lines for 0° and 180° servo positions')
+    return parser.parse_args()
+
+# Parse command line arguments
+args = parse_arguments()
+SHOW_SERVO_LIMITS = args.show_limits
 
 # ---------------- PID Controller Class ----------------
 class PIDController:
@@ -90,6 +103,11 @@ class PIDController:
 
 """
 Hexapod Robot Simulator with PID Servo Control
+
+Usage:
+  python hexaPodSim.py              # Normal simulation
+  python hexaPodSim.py -limit       # Show servo limit reference lines
+
 Controls:
 - W: Walk forward
 - S: Walk backward  
@@ -110,6 +128,7 @@ Features:
 - High-speed position transitions (8 rad/s max speed)
 - Aggressive PID gains for rapid response
 - Faster gait cycle (4 frames vs 7)
+- Optional servo limit visualization (0° and 180° reference lines)
 """
 
 # ---------------- Hexapod Robot Definition ----------------
@@ -265,6 +284,50 @@ def leg_inverse_kinematics(base, foot, coxa_length, femur_length, tibia_length, 
     femur_angle = np.arctan2(z, r) + np.arccos(cos_femur)  # zero is straight down
 
     return coxa_angle, femur_angle, tibia_angle
+
+# ---------------- Servo Limit Calculation ----------------
+def calculate_servo_limit_positions(robot, leg_bases):
+    """Calculate positions for 0° and 180° servo reference lines"""
+    limit_positions = []
+    
+    for i in range(robot.num_legs):
+        base = leg_bases[i]
+        leg_limits = {'coxa_0': [], 'coxa_180': [], 'femur_0': [], 'femur_180': [], 'tibia_0': [], 'tibia_180': []}
+        
+        # Coxa limits (0° and 180°)
+        for coxa_angle in [0, np.pi]:  # 0° and 180°
+            # Show coxa movement range
+            coxa_end = (
+                base[0] + robot.coxa_length * np.cos(coxa_angle + robot.leg_angles[i]),
+                base[1] + robot.coxa_length * np.sin(coxa_angle + robot.leg_angles[i]),
+                base[2]
+            )
+            
+            # Default femur and tibia for visualization
+            femur_angle = np.pi/4  # 45° down
+            tibia_angle = -np.pi/2  # 90° down from femur
+            
+            femur_end = (
+                coxa_end[0] + robot.femur_length * np.cos(coxa_angle + robot.leg_angles[i]) * np.cos(femur_angle),
+                coxa_end[1] + robot.femur_length * np.sin(coxa_angle + robot.leg_angles[i]) * np.cos(femur_angle),
+                coxa_end[2] + robot.femur_length * np.sin(femur_angle)
+            )
+            
+            total_femur = femur_angle + tibia_angle
+            tibia_end = (
+                femur_end[0] + robot.tibia_length * np.cos(coxa_angle + robot.leg_angles[i]) * np.cos(total_femur),
+                femur_end[1] + robot.tibia_length * np.sin(coxa_angle + robot.leg_angles[i]) * np.cos(total_femur),
+                femur_end[2] + robot.tibia_length * np.sin(total_femur)
+            )
+            
+            if coxa_angle == 0:
+                leg_limits['coxa_0'] = [base, coxa_end, femur_end, tibia_end]
+            else:
+                leg_limits['coxa_180'] = [base, coxa_end, femur_end, tibia_end]
+        
+        limit_positions.append(leg_limits)
+    
+    return limit_positions
 
 # ---------------- Handler and Animation ----------------
 # Movement control variables - now additive components
@@ -518,6 +581,12 @@ def animate(frame, ax=ax, robot=robot, leg_lines=leg_lines):
         for line in ax.foot_path_lines:
             line.remove()
     ax.foot_path_lines = []
+    
+    # Remove previous servo limit lines
+    if hasattr(ax, 'servo_limit_lines'):
+        for line in ax.servo_limit_lines:
+            line.remove()
+    ax.servo_limit_lines = []
 
     # Draw updated body at current Z position
     z_bottom = body_z[0]
@@ -954,7 +1023,33 @@ def animate(frame, ax=ax, robot=robot, leg_lines=leg_lines):
         leg_lines[i][2].set_data([joints[2][0], joints[3][0]], [joints[2][1], joints[3][1]])
         leg_lines[i][2].set_3d_properties([joints[2][2], joints[3][2]])
 
-
+    # Draw servo limit reference lines if enabled
+    servo_limit_lines = []
+    if SHOW_SERVO_LIMITS:
+        limit_positions = calculate_servo_limit_positions(robot, leg_bases)
+        
+        for i, leg_limits in enumerate(limit_positions):
+            # Draw 0° coxa position (dotted blue line)
+            if leg_limits['coxa_0']:
+                joints_0 = leg_limits['coxa_0']
+                for j in range(len(joints_0) - 1):
+                    line, = ax.plot([joints_0[j][0], joints_0[j+1][0]], 
+                                  [joints_0[j][1], joints_0[j+1][1]], 
+                                  [joints_0[j][2], joints_0[j+1][2]], 
+                                  'b:', linewidth=1, alpha=0.5, label='0° limit' if i == 0 and j == 0 else "")
+                    servo_limit_lines.append(line)
+            
+            # Draw 180° coxa position (dotted red line)  
+            if leg_limits['coxa_180']:
+                joints_180 = leg_limits['coxa_180']
+                for j in range(len(joints_180) - 1):
+                    line, = ax.plot([joints_180[j][0], joints_180[j+1][0]], 
+                                  [joints_180[j][1], joints_180[j+1][1]], 
+                                  [joints_180[j][2], joints_180[j+1][2]], 
+                                  'r:', linewidth=1, alpha=0.5, label='180° limit' if i == 0 and j == 0 else "")
+                    servo_limit_lines.append(line)
+        
+        ax.servo_limit_lines = servo_limit_lines
 
     return [seg for segments in leg_lines for seg in segments] + foot_path_lines
 

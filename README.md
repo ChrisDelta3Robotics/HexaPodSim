@@ -11,6 +11,7 @@ A comprehensive 3D simulation of a hexapod (6-legged) robot with advanced kinema
 - [Features](#features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Command Line Interface](#command-line-interface)
 - [Controls](#controls)
 - [Technical Overview](#technical-overview)
 - [Robot Specifications](#robot-specifications)
@@ -49,6 +50,8 @@ A comprehensive 3D simulation of a hexapod (6-legged) robot with advanced kinema
 - **Fast Response Tuning**: Aggressive PID gains for snappy, responsive movement
 - **Speed Limitations**: Configurable maximum servo speeds (currently 8 rad/s)
 - **Joint-Specific Tuning**: Different PID parameters for coxa, femur, and tibia servos
+- **Servo Limit Visualization**: Optional dotted reference lines showing 0° and 180° servo positions
+- **Command-Line Interface**: Professional argument parsing with help system
 - **Dynamic Trajectory Calculation**: Foot paths calculated from current positions
 - **Ground Contact Maintenance**: Prevents feet from losing contact during rotation
 - **Height Safety Limits**: Automatic prevention of impossible leg configurations
@@ -83,11 +86,48 @@ pip install scipy  # For advanced mathematical operations
 # Navigate to project directory
 cd /path/to/hexapod-simulator
 
-# Run the simulation
+# Run the normal simulation
 python hexaPodSim.py
+
+# Run with servo limit visualization (dotted reference lines)
+python hexaPodSim.py -limit
+
+# Show help and usage information
+python hexaPodSim.py --help
 
 # The 3D visualization window will open
 # Use keyboard controls to move the robot
+```
+
+## Command Line Interface
+
+The simulator supports command-line arguments for different visualization modes:
+
+### Usage Options
+```bash
+python hexaPodSim.py              # Normal simulation mode
+python hexaPodSim.py -limit       # Show servo limit reference lines  
+python hexaPodSim.py --show-limits # Alternative long form
+python hexaPodSim.py --help       # Display help information
+```
+
+### Servo Limit Visualization
+When using the `-limit` flag, the simulator displays additional visual references:
+- **Blue dotted lines**: Show 0° servo positions for each leg
+- **Red dotted lines**: Show 180° servo positions for each leg
+- **Semi-transparent**: Lines use 50% opacity to avoid visual clutter
+- **Educational tool**: Helps understand servo movement constraints and workspace limits
+
+### Help System
+```bash
+$ python hexaPodSim.py --help
+usage: hexaPodSim.py [-h] [-limit]
+
+Hexapod Robot Simulator with PID Control
+
+options:
+  -h, --help            show this help message and exit
+  -limit, --show-limits Show dotted reference lines for 0° and 180° servo positions
 ```
 
 ## Controls
@@ -442,6 +482,34 @@ class PIDController:
 - **Increase max_speed**: Faster movement, but may reduce stability
 - **Reduce step_period**: Faster gait cycle for quicker walking
 
+### Servo Limit Visualization
+When enabled with the `-limit` command-line flag, the simulator displays servo movement boundaries:
+
+```python
+# Command to enable limit visualization
+python hexaPodSim.py -limit
+
+# Calculates limit positions for each leg
+def calculate_servo_limit_positions(robot, leg_bases):
+    for coxa_angle in [0, np.pi]:  # 0° and 180°
+        # Calculate joint positions using forward kinematics
+        coxa_end = base + coxa_length * [cos(angle), sin(angle), 0]
+        # Default positions: femur=45°, tibia=-90°
+        # Shows theoretical servo movement range
+```
+
+**Visual Elements:**
+- **Blue dotted lines (b:)**: 0° servo positions - minimum range
+- **Red dotted lines (r:)**: 180° servo positions - maximum range  
+- **Transparency**: 50% alpha (alpha=0.5) for subtle reference
+- **Line width**: 1 pixel for minimal visual interference
+
+**Use Cases:**
+- **Educational**: Understanding servo constraints and workspace limits
+- **Debugging**: Identifying when servos approach movement boundaries
+- **Design Analysis**: Validating leg configurations against servo capabilities
+- **Workspace Visualization**: Seeing theoretical vs. actual reachable positions
+
 ## Safety Features
 
 ### Height Limitations
@@ -482,9 +550,23 @@ if distance > max_leg_reach:
 
 ```
 hexaPodSim.py
+├── Command Line Interface
+│   ├── parse_arguments()   # Argument parsing with argparse
+│   └── SHOW_SERVO_LIMITS   # Global flag for limit visualization
+│
+├── PID Controller Class
+│   ├── __init__()          # PID parameter setup
+│   ├── update()            # Position control with speed limits
+│   └── reset()             # Controller state reset
+│
 ├── HexapodRobot Class
-│   ├── __init__()          # Robot geometry setup
+│   ├── __init__()          # Robot geometry and PID setup
+│   ├── set_servo_targets() # Set PID target positions
+│   ├── update_servos()     # Update all PID controllers
 │   └── leg_inverse_kinematics()  # IK calculations
+│
+├── Servo Limit Calculation
+│   └── calculate_servo_limit_positions()  # 0° and 180° references
 │
 ├── Event Handlers
 │   ├── on_key_press()      # Handle key press events
@@ -492,12 +574,13 @@ hexaPodSim.py
 │
 ├── Animation System  
 │   ├── init()              # Initialize visualization
-│   ├── animate()           # Main animation loop
-│   └── Visualization       # 3D plotting and updates
+│   ├── animate()           # Main animation loop with PID updates
+│   └── Visualization       # 3D plotting with optional limit lines
 │
 └── Control Variables
     ├── Movement flags      # Forward, back, left, right, turn
     ├── Body pose          # Pitch, yaw, roll
+    ├── PID controllers     # 18 servo controllers (3 per leg)
     └── Safety limits      # Height constraints
 ```
 
@@ -528,11 +611,24 @@ hexaPodSim.py
 - Uses analytical solution with law of cosines
 - Returns (coxa_angle, femur_angle, tibia_angle)
 
+**`parse_arguments()`**
+- Processes command-line arguments using argparse module
+- Supports -limit flag for servo limit visualization
+- Provides --help option with usage information
+- Returns parsed arguments for global configuration
+
+**`calculate_servo_limit_positions(robot, leg_bases)`**
+- Calculates theoretical servo limit positions (0° and 180°)
+- Uses forward kinematics with default joint angles
+- Returns coordinate arrays for dotted reference line visualization
+- Only called when SHOW_SERVO_LIMITS is enabled
+
 **`animate(frame)`**
 - Main animation loop called 60 times per second
 - Calculates target positions using inverse kinematics
 - Updates PID controllers with new targets
 - Renders legs using actual servo positions (not targets)
+- Optionally draws servo limit reference lines when enabled
 - Updates 3D visualization with realistic servo dynamics
 
 **`on_key_press(event)` / `on_key_release(event)`**
@@ -543,6 +639,10 @@ hexaPodSim.py
 ### Global Variables
 
 ```python
+# Command line interface
+args = parse_arguments()            # Parsed command-line arguments
+SHOW_SERVO_LIMITS = args.show_limits # Global flag for limit visualization
+
 # Movement control (additive system)
 move_forward = [False]
 move_backward = [False] 
@@ -567,6 +667,9 @@ robot.servo_controllers = [
     [coxa_pid, femur_pid, tibia_pid]  # 3 controllers per leg
     for leg in range(6)  # 6 legs
 ]
+
+# Visualization elements (conditionally created)
+servo_limit_lines = []  # Dotted reference lines (when -limit flag used)
 ```
 
 ## Troubleshooting
@@ -679,16 +782,20 @@ ax.text(coxa_end[0], coxa_end[1], coxa_end[2],
 **Potential Improvements:**
 - Add roll control for complete 6-DOF body pose
 - Implement dynamic gait patterns (trot, bound, gallop)
+- Expand servo limit visualization (femur and tibia angle limits)
+- Add interactive limit adjustment via command-line parameters
+- Include workspace boundary visualization and collision detection
 - Add adaptive PID tuning based on load conditions
 - Include servo backlash and deadband modeling
 - Add joint torque/force calculations with PID load compensation
 - Implement servo failure simulation and recovery
 - Add real-time PID parameter adjustment interface
 - Include servo temperature and current monitoring simulation
-- Add save/load functionality for PID tuning profiles
-- Implement path planning with PID trajectory optimization
+- Add save/load functionality for PID tuning profiles and limit configurations
+- Implement path planning with PID trajectory optimization and limit awareness
 - Add physics simulation (gravity, inertia, friction) affecting PID performance
-- Create hardware interface for real servo control
+- Create hardware interface for real servo control with limit monitoring
+- Add configuration file support for different robot geometries and limits
 
 **Bug Reports:**
 Please include:
@@ -702,14 +809,18 @@ Please include:
 Before submitting changes, verify:
 - [ ] All movement controls work individually
 - [ ] Combined movements work correctly
+- [ ] Command-line arguments work correctly (-limit, --help)
+- [ ] Servo limit visualization displays properly when enabled
+- [ ] Normal mode runs without limit lines when flag not used
 - [ ] PID controllers respond appropriately to commands
 - [ ] Servo movement is smooth without oscillation
 - [ ] Body pose controls don't break leg kinematics
 - [ ] Height limits prevent impossible configurations
 - [ ] Trajectory visualization matches actual servo movement
+- [ ] Servo limit lines don't interfere with main simulation
 - [ ] PID gains provide stable, responsive control
-- [ ] No runtime errors or warnings
-- [ ] Smooth 60 FPS animation performance with PID updates
+- [ ] No runtime errors or warnings in both modes
+- [ ] Smooth 60 FPS animation performance with PID updates and optional limits
 
 ---
 
