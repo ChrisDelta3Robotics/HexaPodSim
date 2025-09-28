@@ -45,6 +45,9 @@ class PIDController:
         self.current_position = 0.0
         self.target_position = 0.0
         
+        # Servo position - the actual value sent to hardware servo
+        self.servo_position = 0.0
+        
     def set_target(self, target):
         """Set the target position for the servo"""
         self.target_position = np.clip(target, self.min_output, self.max_output)
@@ -90,16 +93,53 @@ class PIDController:
         self.current_position += position_change
         self.current_position = np.clip(self.current_position, self.min_output, self.max_output)
         
+        # Update servo position (what gets sent to actual hardware)
+        # Convert from radians to 0-180 degree servo range (standard servo format)
+        # This maps the internal PID range to real servo command values
+        self.servo_position = self.convert_to_servo_range(self.current_position)
+        
         # Update for next iteration
         self.previous_error = error
         
         return self.current_position
+    
+    def convert_to_servo_range(self, radian_position):
+        """
+        Convert radian position to 0-180 degree servo range
+        
+        Args:
+            radian_position: Position in radians
+            
+        Returns:
+            Position in degrees (0-180 range)
+        """
+        # Convert radians to degrees
+        degrees = np.rad2deg(radian_position)
+        
+        # Map the range to 0-180 degrees
+        # Assuming the radian range spans from min_output to max_output
+        radian_range = self.max_output - self.min_output
+        degree_range = 180.0  # 0 to 180 degrees
+        
+        # Normalize to 0-1, then scale to 0-180
+        normalized = (radian_position - self.min_output) / radian_range
+        servo_degrees = normalized * degree_range
+        
+        # Ensure it's within 0-180 range
+        servo_degrees = np.clip(servo_degrees, 0.0, 180.0)
+        
+        return servo_degrees
+    
+    def get_servo_position(self):
+        """Get the position value sent to the actual servo hardware (in degrees 0-180)"""
+        return self.servo_position
     
     def reset(self):
         """Reset PID controller state"""
         self.previous_error = 0.0
         self.integral = 0.0
         self.last_time = time.time()
+        self.servo_position = self.convert_to_servo_range(0.0)
 
 """
 Hexapod Robot Simulator with PID Servo Control
@@ -128,6 +168,7 @@ Features:
 - High-speed position transitions (8 rad/s max speed)
 - Aggressive PID gains for rapid response
 - Faster gait cycle (4 frames vs 7)
+- Real servo position display (0-180° range, standard servo format)
 - Optional servo limit visualization (0° and 180° reference lines)
 """
 
@@ -226,6 +267,17 @@ class HexapodRobot:
             leg_positions = []
             for servo in range(3):
                 pos = self.servo_controllers[leg][servo].current_position
+                leg_positions.append(pos)
+            positions.append(leg_positions)
+        return positions
+    
+    def get_servo_hardware_positions(self):
+        """Get positions sent to actual servo hardware"""
+        positions = []
+        for leg in range(self.num_legs):
+            leg_positions = []
+            for servo in range(3):
+                pos = self.servo_controllers[leg][servo].get_servo_position()
                 leg_positions.append(pos)
             positions.append(leg_positions)
         return positions
@@ -456,10 +508,13 @@ for leg_idx in range(robot.num_legs):
     # Set initial positions for PID controllers
     robot.servo_controllers[leg_idx][0].current_position = initial_coxa
     robot.servo_controllers[leg_idx][0].target_position = initial_coxa
+    robot.servo_controllers[leg_idx][0].servo_position = robot.servo_controllers[leg_idx][0].convert_to_servo_range(initial_coxa)
     robot.servo_controllers[leg_idx][1].current_position = initial_femur  
     robot.servo_controllers[leg_idx][1].target_position = initial_femur
+    robot.servo_controllers[leg_idx][1].servo_position = robot.servo_controllers[leg_idx][1].convert_to_servo_range(initial_femur)
     robot.servo_controllers[leg_idx][2].current_position = initial_tibia
     robot.servo_controllers[leg_idx][2].target_position = initial_tibia
+    robot.servo_controllers[leg_idx][2].servo_position = robot.servo_controllers[leg_idx][2].convert_to_servo_range(initial_tibia)
 
 body_z = [robot.body_height / 2]  # Start with body at half its thickness above ground
 num_legs = robot.num_legs
@@ -996,18 +1051,24 @@ def animate(frame, ax=ax, robot=robot, leg_lines=leg_lines):
     # Update all servos using PID control
     servo_positions = robot.update_servos()
     
+    # Get servo hardware positions (what's actually sent to servos)
+    servo_hardware_positions = robot.get_servo_hardware_positions()
+    
     # Render each leg using PID-controlled positions
     for i in range(num_legs):
         coxa_angle = servo_positions[i][0]
         femur_angle = servo_positions[i][1] 
         tibia_angle = servo_positions[i][2]
 
-        coxa_deg = np.rad2deg(coxa_angle)
-        femur_deg = np.rad2deg(femur_angle)
-        tibia_deg = np.rad2deg(tibia_angle)
-        txt_c = ax.text(x_disp, y_disp, z_start + dz * (i * 3 + 0), f"c{i}: {coxa_deg:.0f}°", color='blue', fontsize=10, ha='left', va='center')
-        txt_f = ax.text(x_disp, y_disp, z_start + dz * (i * 3 + 1), f"f{i}: {femur_deg:.0f}°", color='green', fontsize=10, ha='left', va='center')
-        txt_t = ax.text(x_disp, y_disp, z_start + dz * (i * 3 + 2), f"t{i}: {tibia_deg:.0f}°", color='red', fontsize=10, ha='left', va='center')
+        # Display servo hardware positions (actual values sent to servos, already in 0-180° range)
+        servo_coxa_deg = servo_hardware_positions[i][0]  # Already in degrees
+        servo_femur_deg = servo_hardware_positions[i][1]  # Already in degrees
+        servo_tibia_deg = servo_hardware_positions[i][2]  # Already in degrees
+        # Format: s{leg}{joint}: {angle}° where s=servo, leg=0-5, joint=c/f/t (coxa/femur/tibia)
+        # Values are now in standard servo range: 0-180 degrees
+        txt_c = ax.text(x_disp, y_disp, z_start + dz * (i * 3 + 0), f"s{i}c: {servo_coxa_deg:.0f}°", color='blue', fontsize=10, ha='left', va='center')
+        txt_f = ax.text(x_disp, y_disp, z_start + dz * (i * 3 + 1), f"s{i}f: {servo_femur_deg:.0f}°", color='green', fontsize=10, ha='left', va='center')
+        txt_t = ax.text(x_disp, y_disp, z_start + dz * (i * 3 + 2), f"s{i}t: {servo_tibia_deg:.0f}°", color='red', fontsize=10, ha='left', va='center')
         ax.angle_texts.extend([txt_c, txt_f, txt_t])
 
         joints = robot.leg_forward_kinematics(leg_bases[i], coxa_angle + robot.leg_angles[i], femur_angle, tibia_angle)
