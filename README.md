@@ -47,6 +47,8 @@ A comprehensive 3D simulation of a hexapod (6-legged) robot with advanced kinema
 
 ### Advanced Features
 - **PID Servo Dynamics**: Realistic servo behavior with proportional-integral-derivative control
+- **Hardware-Realistic Servo Display**: Shows actual servo positions in standard 0-180° range
+- **Servo Range Conversion**: Automatic mapping from internal radians to servo degrees
 - **Fast Response Tuning**: Aggressive PID gains for snappy, responsive movement
 - **Speed Limitations**: Configurable maximum servo speeds (currently 8 rad/s)
 - **Joint-Specific Tuning**: Different PID parameters for coxa, femur, and tibia servos
@@ -173,6 +175,15 @@ options:
 | `C` | Sweep Coxa | Animate coxa joints for testing |
 | `G` | Sweep Femur | Animate femur joints for testing |
 | `T` | Sweep Tibia | Animate tibia joints for testing |
+
+### Servo Position Display
+
+The simulator shows real-time servo positions in the terminal:
+- **Format**: s{leg}{joint} = {angle}° (e.g., "s00=90.5°")
+- **Range**: 0-180° standard servo positioning
+- **Legs**: 0-5 (front-left to back-right in counter-clockwise order)
+- **Joints**: 0=coxa (hip), 1=femur (thigh), 2=tibia (shin)
+- **Hardware Ready**: Values can be directly sent to physical servo controllers
 
 ### Control Examples
 
@@ -422,6 +433,8 @@ The hexapod simulator uses realistic PID (Proportional-Integral-Derivative) cont
 
 ### PID Controller Features
 - **Individual Control**: Each servo has its own PID controller with independent tuning
+- **Hardware-Realistic Display**: Shows servo positions in standard 0-180° range
+- **Automatic Range Conversion**: Internal radians mapped to servo degrees for display
 - **Fast Response**: Aggressive tuning for snappy, responsive movement
 - **Speed Limits**: Realistic maximum servo speeds (8 radians/second)
 - **Anti-Windup**: Integral term limiting prevents controller instability
@@ -429,11 +442,17 @@ The hexapod simulator uses realistic PID (Proportional-Integral-Derivative) cont
 
 ### Servo Configuration
 
-| Joint Type | Proportional (kp) | Integral (ki) | Derivative (kd) | Max Speed | Characteristics |
-|------------|-------------------|---------------|-----------------|-----------|-----------------|
-| **Coxa** | 5.0 | 0.5 | 0.2 | 8 rad/s | Fast hip rotation |
-| **Femur** | 4.0 | 0.4 | 0.15 | 8 rad/s | Responsive upper leg |
-| **Tibia** | 4.5 | 0.45 | 0.18 | 8 rad/s | Precise foot positioning |
+| Joint Type | Proportional (kp) | Integral (ki) | Derivative (kd) | Max Speed | Display Range | Characteristics |
+|------------|-------------------|---------------|-----------------|-----------|---------------|-----------------|
+| **Coxa** | 5.0 | 0.5 | 0.2 | 8 rad/s | 0-180° | Fast hip rotation |
+| **Femur** | 4.0 | 0.4 | 0.15 | 8 rad/s | 0-180° | Responsive upper leg |
+| **Tibia** | 4.5 | 0.45 | 0.18 | 8 rad/s | 0-180° | Precise foot positioning |
+
+### Servo Position Display
+- **Format**: s{leg}{joint} (e.g., s00, s01, s02 for leg 0's coxa, femur, tibia)
+- **Range**: 0-180° standard servo positioning
+- **Update Rate**: Real-time display during simulation
+- **Conversion**: Automatic mapping from internal radians to hardware degrees
 
 ### PID Implementation
 ```python
