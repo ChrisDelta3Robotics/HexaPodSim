@@ -1,10 +1,20 @@
-# Hexapod Robot Simulator
+# Hexapod Robot Simulator (Legacy)
+
+**⚠️ LEGACY PROJECT - See [HexaPodSim 2.0](../hexapodsim2.0/) for current development**
 
 A comprehensive 3D simulation of a hexapod (6-legged) robot with advanced kinematics, PID servo control, real-time animation, and interactive controls. This simulator demonstrates inverse kinematics, realistic servo dynamics, gait patterns, body articulation, idle positioning, and movement constraints with fast, responsive PID controllers.
+
+> **🚀 New Development**: This project has been superseded by [HexaPodSim 2.0](../hexapodsim2.0/) which features:
+> - **Star-shaped leg configuration** for enhanced stability
+> - **Dual GUI modes** (single-window and multi-window)
+> - **Advanced sensor integration** with Kalman filtering
+> - **Modern neon-themed interface**
+> - **720x720 display optimization**
 
 ![Python](https://img.shields.io/badge/python-v3.8+-blue.svg)
 ![Matplotlib](https://img.shields.io/badge/matplotlib-latest-green.svg)
 ![NumPy](https://img.shields.io/badge/numpy-latest-orange.svg)
+![Status](https://img.shields.io/badge/status-legacy-orange.svg)
 
 ## Table of Contents
 
